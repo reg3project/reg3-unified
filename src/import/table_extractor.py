@@ -139,11 +139,32 @@ class TableExtractor:
         all_specs = []
 
         for table in tables:
-            if self._is_spec_table(table):
+            source = table.get('source', 'xml')
+
+            # Handle kit contents (component list)
+            if source == 'kit_contents':
+                specs = self._parse_kit_contents(table)
+                all_specs.extend(specs)
+            # Handle regular spec tables
+            elif self._is_spec_table(table) or source == 'story_specs':
                 specs = self._parse_spec_table(table)
                 all_specs.extend(specs)
 
         return all_specs
+
+    def _parse_kit_contents(self, table: Dict) -> List[Dict]:
+        """Parse kit contents table into SKU specs."""
+        specs = []
+        for row in table.get('rows', []):
+            if len(row) >= 3:
+                qty, desc, sku = row[0], row[1], row[2]
+                specs.append({
+                    'sku_code': self._clean_value(sku),
+                    'model': self._clean_value(desc),
+                    'quantity': qty,
+                    'component_type': 'kit_component',
+                })
+        return specs
 
     def _is_spec_table(self, table: Dict) -> bool:
         """Check if table contains technical specifications."""

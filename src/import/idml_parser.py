@@ -200,6 +200,11 @@ class IDMLParser:
         if spec_table:
             tables.append(spec_table)
 
+        # Extract kit contents if present
+        kit_table = self._extract_kit_contents()
+        if kit_table:
+            tables.append(kit_table)
+
         return tables
 
     def _extract_specs_from_stories(self) -> Optional[Dict]:
@@ -272,6 +277,69 @@ class IDMLParser:
                     'column_count': len(headers) + (1 if models else 0),
                     'source': 'story_specs'
                 }
+
+        return None
+
+    def _extract_kit_contents(self) -> Optional[Dict]:
+        """Extract kit contents table (Q.tà, Descrizione, Codice format).
+
+        Kit IDML files contain component lists in format:
+        Q.tà, Descrizione, Codice, 2, Attuatori 402 CBC, 104468, ...
+        """
+        for story in self.stories.values():
+            contents = [c.text.strip() for c in story.iter('Content')
+                       if c.text and c.text.strip()]
+
+            full_text = ' '.join(contents)
+
+            # Look for kit content markers
+            if "Q.tà" not in full_text and "Descrizione" not in full_text:
+                continue
+
+            # Find the kit content table
+            try:
+                # Find start of table (Q.tà header)
+                start_idx = None
+                for i, text in enumerate(contents):
+                    if text == "Q.tà":
+                        start_idx = i
+                        break
+
+                if start_idx is None:
+                    continue
+
+                # Extract headers and rows
+                # Format: Q.tà, Descrizione, Codice, val1, val2, val3, val4, val5, val6...
+                headers = contents[start_idx:start_idx + 3]  # Q.tà, Descrizione, Codice
+
+                if headers != ["Q.tà", "Descrizione", "Codice"]:
+                    continue
+
+                # Parse rows (groups of 3)
+                rows = []
+                i = start_idx + 3
+                while i + 2 < len(contents):
+                    qty = contents[i]
+                    desc = contents[i + 1]
+                    code = contents[i + 2]
+
+                    # Stop if we hit non-numeric qty (end of table)
+                    if not qty.isdigit():
+                        break
+
+                    rows.append([qty, desc, code])
+                    i += 3
+
+                if rows:
+                    return {
+                        'headers': ['quantity', 'description', 'sku_code'],
+                        'rows': rows,
+                        'column_count': 3,
+                        'source': 'kit_contents'
+                    }
+
+            except Exception:
+                continue
 
         return None
 
