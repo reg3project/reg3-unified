@@ -170,7 +170,7 @@ class Comparator:
         reference: Optional[pd.DataFrame],
         sheet_name: str
     ) -> SheetComparison:
-        """Compare two sheets."""
+        """Compare two sheets, matching rows by key column."""
         result = SheetComparison(name=sheet_name)
 
         # Handle missing sheets
@@ -187,6 +187,116 @@ class Comparator:
             # All extracted fields are new
             result.new_fields = extracted.size
             return result
+
+        # For SKU sheets, try to match rows by key column
+        # Check both original and lowercased column names
+        key_columns = ['nome modello', 'Nome Modello', 'sku', 'SKU', 'sku_code', 'model', 'name']
+        key_col = None
+        for col in key_columns:
+            # Check with both original and lowercase versions
+            if col in extracted.columns and col in reference.columns:
+                key_col = col
+                break
+            col_lower = col.lower()
+            if col_lower in extracted.columns and col_lower in reference.columns:
+                key_col = col_lower
+                break
+
+        if key_col and sheet_name.lower() == 'sku':
+            # Match by key column for SKU sheets
+            return self._compare_sheets_by_key(extracted, reference, sheet_name, key_col)
+
+        # Fallback to position-based comparison for other sheets
+        return self._compare_sheets_by_position(extracted, reference, sheet_name)
+
+    def _compare_sheets_by_key(
+        self,
+        extracted: pd.DataFrame,
+        reference: pd.DataFrame,
+        sheet_name: str,
+        key_col: str
+    ) -> SheetComparison:
+        """Compare sheets by matching rows using a key column."""
+        result = SheetComparison(name=sheet_name)
+
+        # Get all columns except key column for comparison
+        all_columns = set(extracted.columns) | set(reference.columns)
+        all_columns.discard(key_col)
+
+        # Build index of reference rows by key
+        ref_by_key = {}
+        for idx, row in reference.iterrows():
+            key = str(row.get(key_col, '')).strip()
+            if key and key not in ('nan', 'None', ''):
+                ref_by_key[key] = row
+
+        # Compare each extracted row against its matching reference row
+        for idx, ext_row in extracted.iterrows():
+            ext_key = str(ext_row.get(key_col, '')).strip()
+            if ext_key in ('nan', 'None', ''):
+                continue
+
+            ref_row = ref_by_key.get(ext_key)
+
+            for col in all_columns:
+                ext_has_col = col in extracted.columns
+                ref_has_col = col in reference.columns
+
+                ext_value = ""
+                ref_value = ""
+
+                if ext_has_col:
+                    ext_value = str(ext_row.get(col, '')).strip()
+                if ref_has_col and ref_row is not None:
+                    ref_value = str(ref_row.get(col, '')).strip()
+
+                # Normalize empty values
+                if ext_value in ('nan', 'None', ''):
+                    ext_value = ''
+                if ref_value in ('nan', 'None', ''):
+                    ref_value = ''
+
+                # Determine status
+                status = self._compare_values(ext_value, ref_value, ext_has_col, ref_has_col)
+
+                # Update counts
+                if status == CompareStatus.MATCH:
+                    result.matches += 1
+                elif status == CompareStatus.MISMATCH:
+                    result.mismatches += 1
+                    result.details.append(CellComparison(
+                        sheet=sheet_name,
+                        row=idx,
+                        column=col,
+                        extracted=ext_value,
+                        expected=ref_value,
+                        status=status
+                    ))
+                elif status == CompareStatus.NEW:
+                    result.new_fields += 1
+                elif status == CompareStatus.MISSING:
+                    result.missing_fields += 1
+                    result.details.append(CellComparison(
+                        sheet=sheet_name,
+                        row=idx,
+                        column=col,
+                        extracted=ext_value,
+                        expected=ref_value,
+                        status=status
+                    ))
+                else:
+                    result.empty_both += 1
+
+        return result
+
+    def _compare_sheets_by_position(
+        self,
+        extracted: pd.DataFrame,
+        reference: pd.DataFrame,
+        sheet_name: str
+    ) -> SheetComparison:
+        """Compare sheets row by row based on position."""
+        result = SheetComparison(name=sheet_name)
 
         # Get all columns
         all_columns = set(extracted.columns) | set(reference.columns)
@@ -299,6 +409,8 @@ class Comparator:
 
     def _normalize_value(self, value: str) -> str:
         """Normalize value for comparison."""
+        import re
+
         if not value:
             return ""
 
@@ -312,6 +424,18 @@ class Comparator:
         value = value.replace('–', '-')
         value = value.replace('—', '-')
         value = value.replace('  ', ' ')
+
+        # Remove footnote references: (*), (**), (***) etc.
+        value = re.sub(r'\s*\(\*+\)\s*', '', value)
+
+        # Remove expanded footnotes: |dati riferiti a...
+        value = re.sub(r'\|.*$', '', value)
+
+        # Normalize time formats: 01:25:00 -> 1:25
+        value = re.sub(r'^0?(\d+):(\d+):00$', r'\1:\2', value)
+
+        # Remove trailing/leading whitespace
+        value = value.strip()
 
         return value
 

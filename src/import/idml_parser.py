@@ -200,10 +200,10 @@ class IDMLParser:
         if spec_table:
             tables.append(spec_table)
 
-        # Extract kit contents if present
-        kit_table = self._extract_kit_contents()
-        if kit_table:
-            tables.append(kit_table)
+        # Extract ALL kit contents tables (multi-kit pages support)
+        kit_tables = self._extract_kit_contents()
+        if kit_tables:
+            tables.extend(kit_tables)
 
         return tables
 
@@ -280,12 +280,17 @@ class IDMLParser:
 
         return None
 
-    def _extract_kit_contents(self) -> Optional[Dict]:
-        """Extract kit contents table (Q.tà, Descrizione, Codice format).
+    def _extract_kit_contents(self) -> List[Dict]:
+        """Extract ALL kit contents tables (Q.tà, Descrizione, Codice format).
 
         Kit IDML files contain component lists in format:
         Q.tà, Descrizione, Codice, 2, Attuatori 402 CBC, 104468, ...
+
+        Multi-kit pages (e.g., LEADER + MASTER) have multiple such tables.
+        Returns a list of all kit tables found.
         """
+        all_kit_tables = []
+
         for story in self.stories.values():
             contents = [c.text.strip() for c in story.iter('Content')
                        if c.text and c.text.strip()]
@@ -296,64 +301,100 @@ class IDMLParser:
             if "Q.tà" not in full_text and "Descrizione" not in full_text:
                 continue
 
-            # Find the kit content table
+            # Find ALL kit content tables in this story
             try:
-                # Find start of table (Q.tà header)
-                start_idx = None
-                for i, text in enumerate(contents):
-                    if text == "Q.tà":
-                        start_idx = i
-                        break
+                # Find all "Q.tà" positions (each marks a new kit table)
+                qta_indices = [i for i, text in enumerate(contents) if text == "Q.tà"]
 
-                if start_idx is None:
-                    continue
+                for start_idx in qta_indices:
+                    # Extract headers and rows
+                    # Format: Q.tà, Descrizione, Codice, val1, val2, val3, val4, val5, val6...
+                    if start_idx + 2 >= len(contents):
+                        continue
 
-                # Extract headers and rows
-                # Format: Q.tà, Descrizione, Codice, val1, val2, val3, val4, val5, val6...
-                headers = contents[start_idx:start_idx + 3]  # Q.tà, Descrizione, Codice
+                    headers = contents[start_idx:start_idx + 3]  # Q.tà, Descrizione, Codice
 
-                if headers != ["Q.tà", "Descrizione", "Codice"]:
-                    continue
+                    if headers != ["Q.tà", "Descrizione", "Codice"]:
+                        continue
 
-                # Parse rows (groups of 3)
-                rows = []
-                i = start_idx + 3
-                while i + 2 < len(contents):
-                    qty = contents[i]
-                    desc = contents[i + 1]
-                    code = contents[i + 2]
+                    # Parse rows (groups of 3)
+                    rows = []
+                    i = start_idx + 3
+                    while i + 2 < len(contents):
+                        qty = contents[i]
+                        desc = contents[i + 1]
+                        code = contents[i + 2]
 
-                    # Stop if we hit non-numeric qty (end of table)
-                    if not qty.isdigit():
-                        break
+                        # Stop if we hit non-numeric qty or another Q.tà (end of this kit)
+                        if not qty.isdigit() or qty == "Q.tà":
+                            break
 
-                    rows.append([qty, desc, code])
-                    i += 3
+                        rows.append([qty, desc, code])
+                        i += 3
 
-                if rows:
-                    return {
-                        'headers': ['quantity', 'description', 'sku_code'],
-                        'rows': rows,
-                        'column_count': 3,
-                        'source': 'kit_contents'
-                    }
+                    if rows:
+                        all_kit_tables.append({
+                            'headers': ['quantity', 'description', 'sku_code'],
+                            'rows': rows,
+                            'column_count': 3,
+                            'source': 'kit_contents'
+                        })
 
             except Exception:
                 continue
 
-        return None
+        return all_kit_tables
 
     def _is_spec_header(self, text: str) -> bool:
-        """Check if text looks like a specification header."""
-        spec_headers = [
-            'tensione', 'alimentazione', 'potenza', 'motore', 'peso',
-            'grado di protezione', 'temperatura', 'frequenza', 'dimensioni',
-            'coppia', 'forza', 'velocità', 'lunghezza', 'spazio', 'pignone',
-            'condensatore', 'termoprotezione', 'encoder', 'tipo', 'corsa',
-            'angolo', 'staffe', 'apparecchiatura', 'larghezza', 'portata'
+        """Check if text looks like a specification header.
+
+        Headers are distinguished from values by:
+        1. Starting with a known header keyword
+        2. Not containing typical value patterns (units, numbers at start)
+        """
+        # Exact headers (case-insensitive match)
+        exact_headers = {
+            'modello', 'tensione di alimentazione di rete', 'tensione di alimentazione',
+            'motore elettrico', 'potenza max', 'potenza max assorbita',
+            'coppia max', 'coppia nominale', 'forza max di spinta', 'forza max',
+            'rapporto di riduzione', 'larghezza max anta', 'larghezza max',
+            "velocità dell'anta", 'velocità max anta', 'velocità angolare max',
+            'regolazione velocità e controllo motore', 'finecorsa', 'fine corsa',
+            'pignone', 'encoder', 'regolazione della forza',
+            'temperatura ambiente di esercizio', 'temperatura funzionamento',
+            'termoprotezione', 'grado di protezione', 'peso', 'peso operatore',
+            'peso max anta', 'peso max anta cantilever',
+            'dimensioni (lxpxh)', 'dimensioni', 'frequenza di utilizzo',
+            'apparecchiatura elettronica', 'dispositivo di sblocco', 'sblocco manuale',
+            'condensatore di spunto', 'condensatore spunto', 'condensatore marcia',
+            'condensatore', 'corsa max', 'corsa dello stelo',
+            'angolo max apertura anta', 'spazio di fermata', 'tipo di rallentamento',
+            'staffe di fissaggio', 'portata gruppo motore-pompa',
+            'n° max cicli/ora', 'n° max cicli/giorno', 'cicli/ora', 'cicli/giorno',
+            'tipo di materiale', 'tipo di trattamento', 'tipo di olio', 'tipo di asta',
+            'corrente assorbita', 'corrente max assorbita', 'centrale', 'scheda elettronica',
+            'lunghezza max anta', 'lunghezza max asta', 'ingombri',
+        }
+
+        text_lower = text.lower().strip()
+
+        # Check exact match first
+        if text_lower in exact_headers:
+            return True
+
+        # Headers starting with specific keywords (for variations)
+        header_starts = [
+            'tensione ', 'potenza ', 'motore ', 'coppia ', 'forza ',
+            'rapporto ', 'larghezza ', 'velocità ', 'temperatura ',
+            'peso ', 'dimensioni ', 'frequenza ', 'apparecchiatura ',
+            'dispositivo ', 'condensatore ', 'corsa ', 'angolo ',
+            'tipo di ', 'corrente ', 'lunghezza ', 'n° max ',
         ]
-        text_lower = text.lower()
-        return any(h in text_lower for h in spec_headers)
+
+        if any(text_lower.startswith(h) for h in header_starts):
+            return True
+
+        return False
 
     def _parse_table(self, table_elem: etree._Element) -> Optional[Dict]:
         """Parse a single table element."""

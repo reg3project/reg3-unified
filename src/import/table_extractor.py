@@ -31,35 +31,54 @@ class TableExtractor:
         'motore': 'motor_type',
         'motor type': 'motor_type',
 
-        # Physical
+        # Physical - Weight
         'peso': 'weight',
+        'peso operatore': 'weight',
+        'peso attuatore': 'weight',
+        'peso motore': 'weight',
         'weight': 'weight',
+        'peso max anta': 'max_gate_weight',
+        'peso max anta cantilever': 'max_gate_weight_cantilever',
+        'peso max': 'max_gate_weight',
+
+        # Physical - Dimensions
         'dimensioni': 'dimensions',
         'dimensioni (lxpxh)': 'dimensions',
+        'dimensioni operatore': 'dimensions',
         'dimensions': 'dimensions',
         'ingombri': 'dimensions',
+        'ingombro': 'dimensions',
 
-        # Performance
-        'coppia max': 'torque',
-        'coppia nominale': 'torque',
-        'torque': 'torque',
+        # Performance - Speed
         'velocità': 'speed',
         'velocità max anta': 'speed',
         'velocità max stelo': 'speed',
         'velocità angolare max': 'speed',
+        "velocità dell'anta": 'speed',
+        'velocita anta': 'speed',
         'speed': 'speed',
+
+        # Performance - Torque/Force
+        'coppia max': 'torque',
+        'coppia nominale': 'torque',
+        'coppia': 'torque',
+        'torque': 'torque',
+        'forza max di spinta': 'max_force',
+        'forza max': 'max_force',
+        'forza di spinta': 'max_force',
+
+        # Performance - Stroke/Length
         'corsa max': 'max_stroke',
         'corsa dello stelo': 'max_stroke',
+        'corsa': 'max_stroke',
         'larghezza max': 'max_width',
         'larghezza max anta': 'max_width',
         'lunghezza max anta': 'max_length',
         'lunghezza max asta': 'max_length',
+        'lunghezza max': 'max_length',
         'max stroke': 'max_stroke',
-        'forza max di spinta': 'max_force',
-        'forza max': 'max_force',
-        'peso max anta': 'max_gate_weight',
 
-        # Cycles
+        # Cycles/Frequency
         'n° max cicli/ora': 'cycles_hour',
         'cicli/ora': 'cycles_hour',
         'frequenza di utilizzo': 'cycles_hour',
@@ -84,14 +103,20 @@ class TableExtractor:
         'condensatore spunto': 'capacitor_start',
         'condensatore di spunto': 'capacitor_start',
         'corrente assorbita': 'current',
+        'corrente max assorbita': 'current',
 
         # Mechanical
         'pignone': 'pinion',
         'rapporto di riduzione': 'gear_ratio',
+        'rapporto riduzione': 'gear_ratio',
         'angolo max apertura anta': 'max_angle',
+        'angolo max apertura': 'max_angle',
         'spazio di fermata': 'stopping_space',
         'encoder': 'encoder',
+        'encoder magnetico': 'encoder',
         'tipo di rallentamento': 'deceleration_type',
+        'regolazione velocità e controllo motore': 'speed_control',
+        'regolazione della forza': 'force_regulation',
 
         # Control
         'finecorsa': 'limit_switch',
@@ -116,7 +141,6 @@ class TableExtractor:
 
         # Identifiers
         'codice': 'sku_code',
-        'modello': 'model',
         'modello': 'model',
         'code': 'sku_code',
     }
