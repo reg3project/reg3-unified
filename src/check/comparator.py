@@ -147,8 +147,13 @@ class Comparator:
         all_sheets = set(extracted.keys()) | set(reference.keys())
 
         for sheet_name in all_sheets:
-            ext_sheet = extracted.get(sheet_name.lower()) or extracted.get(sheet_name)
-            ref_sheet = reference.get(sheet_name.lower()) or reference.get(sheet_name)
+            # Get sheet by lowercase name first, then original name
+            ext_sheet = extracted.get(sheet_name.lower())
+            if ext_sheet is None:
+                ext_sheet = extracted.get(sheet_name)
+            ref_sheet = reference.get(sheet_name.lower())
+            if ref_sheet is None:
+                ref_sheet = reference.get(sheet_name)
 
             sheet_result = self._compare_sheets(
                 ext_sheet,
