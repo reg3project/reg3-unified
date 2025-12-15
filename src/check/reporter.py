@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+"""
+Reporter - Generate HTML and JSON reports from comparison results
+
+Creates visual reports showing comparison accuracy and details.
+"""
+
+import argparse
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+from jinja2 import Template
+
+
+# HTML template for summary report
+SUMMARY_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REG3 Processing Summary</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .summary-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .accuracy-high { color: #28a745; }
+        .accuracy-medium { color: #ffc107; }
+        .accuracy-low { color: #dc3545; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #007bff;
+            color: white;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #28a745;
+            transition: width 0.3s;
+        }
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>REG3 Processing Summary</h1>
+
+    <div class="summary-box">
+        <p><strong>Date:</strong> {{ timestamp }}</p>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">{{ total_files }}</div>
+                <div class="stat-label">Files Processed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value {{ accuracy_class }}">{{ overall_accuracy }}%</div>
+                <div class="stat-label">Overall Accuracy</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{{ total_matches }}</div>
+                <div class="stat-label">Matches</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{{ total_mismatches }}</div>
+                <div class="stat-label">Mismatches</div>
+            </div>
+        </div>
+    </div>
+
+    <h2>Per-File Results</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Accuracy</th>
+                <th>Matches</th>
+                <th>Mismatches</th>
+                <th>New</th>
+                <th>Missing</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in files %}
+            <tr>
+                <td>{{ file.name }}</td>
+                <td>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ file.accuracy }}%"></div>
+                    </div>
+                    {{ file.accuracy }}%
+                </td>
+                <td>{{ file.matches }}</td>
+                <td>{{ file.mismatches }}</td>
+                <td>{{ file.new }}</td>
+                <td>{{ file.missing }}</td>
+                <td><a href="per-file/{{ file.name }}.html">View</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p style="text-align: center; color: #666; margin-top: 30px;">
+        Generated by REG3 Unified Pipeline
+    </p>
+</body>
+</html>
+"""
+
+# HTML template for per-file report
+FILE_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ filename }} - Comparison Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .back-link {
+            margin-bottom: 20px;
+        }
+        .summary-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .stat {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #007bff;
+            color: white;
+        }
+        .status-match { background: #d4edda; }
+        .status-mismatch { background: #f8d7da; }
+        .status-new { background: #fff3cd; }
+        .status-missing { background: #cce5ff; }
+        .extracted { font-family: monospace; }
+        .expected { font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="back-link">
+        <a href="../summary.html">← Back to Summary</a>
+    </div>
+
+    <h1>{{ filename }}</h1>
+
+    <div class="summary-box">
+        <p><strong>Generated:</strong> {{ timestamp }}</p>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" style="color: #28a745;">{{ accuracy }}%</div>
+                <div class="stat-label">Accuracy</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{{ matches }}</div>
+                <div class="stat-label">Matches</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" style="color: #dc3545;">{{ mismatches }}</div>
+                <div class="stat-label">Mismatches</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{{ new_fields }}</div>
+                <div class="stat-label">New</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{{ missing_fields }}</div>
+                <div class="stat-label">Missing</div>
+            </div>
+        </div>
+    </div>
+
+    {% if details %}
+    <h2>Differences</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Sheet</th>
+                <th>Row</th>
+                <th>Column</th>
+                <th>Status</th>
+                <th>Extracted</th>
+                <th>Expected</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for detail in details %}
+            <tr class="status-{{ detail.status }}">
+                <td>{{ detail.sheet }}</td>
+                <td>{{ detail.row }}</td>
+                <td>{{ detail.column }}</td>
+                <td>{{ detail.status }}</td>
+                <td class="extracted">{{ detail.extracted }}</td>
+                <td class="expected">{{ detail.expected }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No differences found - perfect match!</p>
+    {% endif %}
+</body>
+</html>
+"""
+
+
+class Reporter:
+    """Generate HTML and JSON reports from comparison results."""
+
+    def __init__(self, output_dir: str):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def generate_file_report(self, comparison: Dict, output_name: str = None) -> str:
+        """Generate a single file comparison report.
+
+        Returns: Path to generated HTML file
+        """
+        filename = output_name or comparison.get('file', 'unknown')
+
+        # Generate HTML
+        template = Template(FILE_TEMPLATE)
+        html = template.render(
+            filename=filename,
+            timestamp=datetime.now().isoformat(),
+            accuracy=comparison.get('accuracy', 0),
+            matches=comparison.get('matches', 0),
+            mismatches=comparison.get('mismatches', 0),
+            new_fields=comparison.get('new_fields', 0),
+            missing_fields=comparison.get('missing_fields', 0),
+            details=comparison.get('details', []),
+        )
+
+        # Save HTML
+        html_path = self.output_dir / f"{filename}.html"
+        html_path.write_text(html, encoding='utf-8')
+
+        # Save JSON
+        json_path = self.output_dir / f"{filename}.json"
+        json_path.write_text(json.dumps(comparison, indent=2), encoding='utf-8')
+
+        return str(html_path)
+
+    def generate_summary(self, comparisons: List[Dict], output_path: str = None) -> str:
+        """Generate summary report from all comparisons.
+
+        Returns: Path to generated HTML file
+        """
+        output_path = output_path or str(self.output_dir / 'summary.html')
+
+        # Calculate totals
+        total_matches = sum(c.get('matches', 0) for c in comparisons)
+        total_mismatches = sum(c.get('mismatches', 0) for c in comparisons)
+        total_comparable = total_matches + total_mismatches
+
+        overall_accuracy = 0
+        if total_comparable > 0:
+            overall_accuracy = round((total_matches / total_comparable) * 100, 2)
+
+        # Determine accuracy class
+        if overall_accuracy >= 95:
+            accuracy_class = 'accuracy-high'
+        elif overall_accuracy >= 80:
+            accuracy_class = 'accuracy-medium'
+        else:
+            accuracy_class = 'accuracy-low'
+
+        # Prepare file data
+        files_data = []
+        for comp in comparisons:
+            files_data.append({
+                'name': comp.get('file', 'unknown'),
+                'accuracy': comp.get('accuracy', 0),
+                'matches': comp.get('matches', 0),
+                'mismatches': comp.get('mismatches', 0),
+                'new': comp.get('new_fields', 0),
+                'missing': comp.get('missing_fields', 0),
+            })
+
+        # Sort by accuracy (lowest first to highlight issues)
+        files_data.sort(key=lambda x: x['accuracy'])
+
+        # Generate HTML
+        template = Template(SUMMARY_TEMPLATE)
+        html = template.render(
+            timestamp=datetime.now().isoformat(),
+            total_files=len(comparisons),
+            overall_accuracy=overall_accuracy,
+            accuracy_class=accuracy_class,
+            total_matches=total_matches,
+            total_mismatches=total_mismatches,
+            files=files_data,
+        )
+
+        # Save
+        Path(output_path).write_text(html, encoding='utf-8')
+        return output_path
+
+
+def generate_reports(comparisons: List[Dict], output_dir: str) -> str:
+    """Generate all reports from comparison results."""
+    reporter = Reporter(output_dir)
+
+    # Generate per-file reports
+    per_file_dir = Path(output_dir) / 'per-file'
+    per_file_reporter = Reporter(str(per_file_dir))
+
+    for comp in comparisons:
+        per_file_reporter.generate_file_report(comp)
+
+    # Generate summary
+    return reporter.generate_summary(comparisons)
+
+
+def main():
+    """Generate summary report from existing per-file reports."""
+    parser = argparse.ArgumentParser(description='Generate summary report')
+    parser.add_argument('--input', '-i', required=True, help='Directory containing per-file JSON reports')
+    parser.add_argument('--output', '-o', required=True, help='Output path for summary HTML')
+
+    args = parser.parse_args()
+
+    # Load all JSON reports
+    input_dir = Path(args.input)
+    comparisons = []
+
+    for json_file in input_dir.glob('*.json'):
+        with open(json_file, 'r', encoding='utf-8') as f:
+            comparisons.append(json.load(f))
+
+    if not comparisons:
+        print(f"No JSON reports found in {args.input}")
+        return
+
+    # Generate summary
+    reporter = Reporter(str(Path(args.output).parent))
+    output_path = reporter.generate_summary(comparisons, args.output)
+    print(f"Summary report generated: {output_path}")
+
+
+if __name__ == '__main__':
+    main()

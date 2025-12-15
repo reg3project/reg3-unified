@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "description": "Log of human corrections to extraction errors - Claude reads this to improve future extractions",
+  
+  "corrections": [
+    {
+      "id": 1,
+      "date": "2024-12-15",
+      "file": "B614",
+      "sheet": "sku",
+      "field": "condensatore_spunto",
+      "row": 2,
+      "extracted": null,
+      "expected": "25 µF",
+      "error_type": "missing_column",
+      "resolution": "Add 'Condensatore spunto' to table_headers mapping",
+      "applied": true,
+      "notes": "Column was not in original mapping, need to add"
+    },
+    {
+      "id": 2,
+      "date": "2024-12-15",
+      "file": "746_C",
+      "sheet": "sku",
+      "field": "voltage",
+      "row": 2,
+      "extracted": "220-240V~ 50/60 H",
+      "expected": "220-240V~ 50/60 Hz",
+      "error_type": "typo",
+      "resolution": "Add to global_text_corrections: '50/60 H' → '50/60 Hz'",
+      "applied": true,
+      "notes": "Common OCR/typing error"
+    },
+    {
+      "id": 3,
+      "date": "2024-12-15",
+      "file": "746_C",
+      "sheet": "prodotti",
+      "field": "description",
+      "row": 1,
+      "extracted": "Operatore oleodimamico interrato",
+      "expected": "Operatore oleodinamico interrato",
+      "error_type": "typo",
+      "resolution": "Add to global_text_corrections",
+      "applied": false,
+      "notes": "Source IDML may have typo - verify"
+    },
+    {
+      "id": 4,
+      "date": "2024-12-14",
+      "file": "620_Rapida",
+      "sheet": "sku",
+      "field": "dimensions",
+      "row": 3,
+      "extracted": "330×205×290",
+      "expected": "330×205×290 mm",
+      "error_type": "missing_unit",
+      "resolution": "Append 'mm' if dimensions pattern matches but unit missing",
+      "applied": true,
+      "notes": "Regex should capture full dimensions with unit"
+    }
+  ],
+  
+  "statistics": {
+    "total_corrections": 4,
+    "applied": 3,
+    "pending": 1,
+    "by_error_type": {
+      "typo": 2,
+      "missing_column": 1,
+      "missing_unit": 1
+    },
+    "by_sheet": {
+      "prodotti": 1,
+      "sku": 3
+    }
+  },
+  
+  "pending_review": [
+    {
+      "file": "620_Standard",
+      "issue": "Arm selection matrix has different structure than other products",
+      "priority": "medium"
+    },
+    {
+      "file": "B680H",
+      "issue": "Missing accessory SKUs in extraction",
+      "priority": "high"
+    }
+  ]
+}

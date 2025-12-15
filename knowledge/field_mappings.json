@@ -1,0 +1,179 @@
+{
+  "version": "1.0",
+  "last_updated": "2024-12-15",
+  
+  "sheets": {
+    "prodotti": {
+      "description": "Product-level metadata",
+      "columns": 36,
+      "fields": {
+        "category": {
+          "xpath": "//ParagraphStyleRange[contains(@AppliedParagraphStyle, 'categoria')]//Content",
+          "fallback_patterns": [
+            "AUTOMAZIONI PER CANCELLI",
+            "BARRIERE STRADALI",
+            "AUTOMAZIONI PER PORTE"
+          ],
+          "required": true
+        },
+        "name": {
+          "xpath": "//ParagraphStyleRange[contains(@AppliedParagraphStyle, 'titolo')]//Content",
+          "extract_regex": "^([A-Z0-9]+(?:\\s+[A-Za-z]+)*)(?:\\s+[–-]\\s+)?",
+          "required": true
+        },
+        "subtitle": {
+          "xpath": "//ParagraphStyleRange[contains(@AppliedParagraphStyle, 'sottotitolo')]//Content",
+          "required": false
+        },
+        "page": {
+          "source": "filename",
+          "extract_regex": "Pages_(\\d+-\\d+)",
+          "required": true
+        },
+        "description": {
+          "xpath": "//ParagraphStyleRange[contains(@AppliedParagraphStyle, 'descrizione')]//Content",
+          "max_length": 500,
+          "required": false
+        },
+        "badges": {
+          "xpath": "//ParagraphStyleRange[contains(@AppliedParagraphStyle, 'badge')]//Content",
+          "is_array": true,
+          "required": false
+        },
+        "certifications": {
+          "xpath": "//Image[contains(@href, 'CE') or contains(@href, 'UL')]/@href",
+          "is_array": true,
+          "required": false
+        },
+        "image_refs": {
+          "xpath": "//Image/@href",
+          "is_array": true,
+          "required": false
+        }
+      }
+    },
+    
+    "sku": {
+      "description": "SKU-level technical specifications",
+      "columns": 66,
+      "table_detection": {
+        "header_patterns": [
+          "Caratteristiche tecniche",
+          "Dati tecnici",
+          "Technical specifications"
+        ],
+        "first_column_patterns": [
+          "Codice",
+          "Modello",
+          "Alimentazione"
+        ]
+      },
+      "fields": {
+        "sku_code": {
+          "table_column": 0,
+          "extract_regex": "\\d{6,7}[A-Z]*",
+          "required": true
+        },
+        "voltage": {
+          "table_headers": ["Alimentazione", "Tensione", "Supply voltage"],
+          "validation_regex": "\\d+V.*(?:Hz|~)",
+          "required": true
+        },
+        "motor_type": {
+          "table_headers": ["Tipo di motore", "Motore", "Motor type"],
+          "allowed_values": ["Brushless", "Asincrono", "24V DC", "In corrente continua"],
+          "required": false
+        },
+        "power": {
+          "table_headers": ["Potenza max assorbita", "Potenza", "Power"],
+          "validation_regex": "\\d+(?:\\.\\d+)?\\s*(?:W|kW)",
+          "required": false
+        },
+        "torque": {
+          "table_headers": ["Coppia max", "Coppia nominale", "Torque"],
+          "validation_regex": "\\d+(?:\\.\\d+)?\\s*Nm",
+          "required": false
+        },
+        "weight": {
+          "table_headers": ["Peso", "Weight"],
+          "validation_regex": "\\d+(?:\\.\\d+)?\\s*kg",
+          "required": false
+        },
+        "dimensions": {
+          "table_headers": ["Dimensioni", "Dimensions", "Ingombri"],
+          "format": "LxPxH mm",
+          "required": false
+        },
+        "ip_rating": {
+          "table_headers": ["Grado di protezione", "IP", "Protection"],
+          "validation_regex": "IP\\d{2}",
+          "required": false
+        },
+        "temperature": {
+          "table_headers": ["Temperatura funzionamento", "Temperatura", "Operating temperature"],
+          "validation_regex": "-?\\d+°C\\s*[÷~]\\s*[+-]?\\d+°C",
+          "required": false
+        },
+        "cycles_hour": {
+          "table_headers": ["N° max cicli/ora", "Cicli/ora", "Cycles/hour"],
+          "validation_regex": "\\d+",
+          "required": false
+        },
+        "cycles_day": {
+          "table_headers": ["N° max cicli/giorno", "Cicli/giorno", "Cycles/day"],
+          "validation_regex": "\\d+",
+          "required": false
+        },
+        "speed": {
+          "table_headers": ["Velocità", "Speed"],
+          "validation_regex": "\\d+(?:\\.\\d+)?\\s*(?:m/s|s)",
+          "required": false
+        },
+        "max_stroke": {
+          "table_headers": ["Corsa max", "Larghezza max", "Max stroke"],
+          "validation_regex": "\\d+(?:\\.\\d+)?\\s*m",
+          "required": false
+        },
+        "capacitor_run": {
+          "table_headers": ["Condensatore marcia", "Condensatore"],
+          "validation_regex": "\\d+\\s*µF",
+          "required": false
+        },
+        "capacitor_start": {
+          "table_headers": ["Condensatore spunto"],
+          "validation_regex": "\\d+\\s*µF",
+          "required": false
+        },
+        "limit_switch": {
+          "table_headers": ["Finecorsa", "Fine corsa", "Limit switch"],
+          "allowed_values": ["Encoder", "Meccanico", "Magnetico"],
+          "required": false
+        },
+        "release": {
+          "table_headers": ["Sblocco", "Sblocco manuale", "Manual release"],
+          "required": false
+        },
+        "control_unit": {
+          "table_headers": ["Centrale", "Scheda elettronica", "Control unit"],
+          "extract_regex": "[A-Z]\\d+",
+          "required": false
+        }
+      }
+    }
+  },
+  
+  "accessory_extraction": {
+    "section_headers": ["Accessori", "Optional", "Accessori e ricambi"],
+    "sku_pattern": "\\d{6,7}",
+    "link_to_parent": true
+  },
+  
+  "global_text_corrections": {
+    "50/60 H": "50/60 Hz",
+    "Scheda eletttronica": "Scheda elettronica",
+    "Contentore": "Contenitore",
+    "Interfaccia US": "Interfaccia BUS",
+    "amortizzati": "ammortizzati",
+    "Cilidro": "Cilindro"
+  }
+}

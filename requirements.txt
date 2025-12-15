@@ -1,0 +1,18 @@
+# REG3 Unified - Python Dependencies
+
+# Core data processing
+openpyxl>=3.1.0        # XLSX read/write
+pandas>=2.0.0          # Data manipulation
+lxml>=4.9.0            # XML parsing for IDML
+
+# Note: zipfile is built-in Python, no install needed for IDML unpacking
+
+# Reporting
+jinja2>=3.1.0          # HTML report templates
+
+# Comparison utilities
+deepdiff>=6.0.0        # Deep comparison of data structures
+
+# Development
+pytest>=7.0.0          # Testing
+black>=23.0.0          # Code formatting

@@ -1,0 +1,205 @@
+"""
+Table Extractor - Extracts technical specifications from IDML tables
+
+Handles various table formats found in FAAC catalogs and maps
+table headers to standardized column names.
+"""
+
+import re
+from typing import Dict, List, Optional, Tuple
+
+
+class TableExtractor:
+    """Extract and normalize table data from IDML."""
+
+    # Header mappings (Italian -> standardized)
+    HEADER_MAPPINGS = {
+        # Voltage/Power
+        'alimentazione': 'voltage',
+        'tensione': 'voltage',
+        'supply voltage': 'voltage',
+        'potenza max assorbita': 'power',
+        'potenza': 'power',
+        'power': 'power',
+
+        # Motor
+        'tipo di motore': 'motor_type',
+        'motore': 'motor_type',
+        'motor type': 'motor_type',
+
+        # Physical
+        'peso': 'weight',
+        'weight': 'weight',
+        'dimensioni': 'dimensions',
+        'dimensions': 'dimensions',
+        'ingombri': 'dimensions',
+
+        # Performance
+        'coppia max': 'torque',
+        'coppia nominale': 'torque',
+        'torque': 'torque',
+        'velocità': 'speed',
+        'speed': 'speed',
+        'corsa max': 'max_stroke',
+        'larghezza max': 'max_stroke',
+        'max stroke': 'max_stroke',
+
+        # Cycles
+        'n° max cicli/ora': 'cycles_hour',
+        'cicli/ora': 'cycles_hour',
+        'cycles/hour': 'cycles_hour',
+        'n° max cicli/giorno': 'cycles_day',
+        'cicli/giorno': 'cycles_day',
+        'cycles/day': 'cycles_day',
+
+        # Protection
+        'grado di protezione': 'ip_rating',
+        'ip': 'ip_rating',
+        'protection': 'ip_rating',
+        'temperatura funzionamento': 'temperature',
+        'temperatura': 'temperature',
+        'operating temperature': 'temperature',
+
+        # Electrical
+        'condensatore marcia': 'capacitor_run',
+        'condensatore': 'capacitor_run',
+        'condensatore spunto': 'capacitor_start',
+
+        # Control
+        'finecorsa': 'limit_switch',
+        'fine corsa': 'limit_switch',
+        'limit switch': 'limit_switch',
+        'sblocco': 'release',
+        'sblocco manuale': 'release',
+        'manual release': 'release',
+        'centrale': 'control_unit',
+        'scheda elettronica': 'control_unit',
+        'control unit': 'control_unit',
+
+        # Identifiers
+        'codice': 'sku_code',
+        'modello': 'model',
+        'code': 'sku_code',
+    }
+
+    def __init__(self, field_mappings: Optional[Dict] = None):
+        """Initialize with optional custom field mappings."""
+        self.field_mappings = field_mappings or {}
+        self._load_custom_mappings()
+
+    def _load_custom_mappings(self) -> None:
+        """Load additional mappings from field_mappings config."""
+        if 'sku' in self.field_mappings:
+            for field, config in self.field_mappings.get('sku', {}).get('fields', {}).items():
+                if 'table_headers' in config:
+                    for header in config['table_headers']:
+                        self.HEADER_MAPPINGS[header.lower()] = field
+
+    def extract_specs(self, tables: List[Dict]) -> List[Dict]:
+        """Extract SKU specifications from tables."""
+        all_specs = []
+
+        for table in tables:
+            if self._is_spec_table(table):
+                specs = self._parse_spec_table(table)
+                all_specs.extend(specs)
+
+        return all_specs
+
+    def _is_spec_table(self, table: Dict) -> bool:
+        """Check if table contains technical specifications."""
+        headers = table.get('headers', [])
+        if not headers:
+            return False
+
+        # Check for spec-related headers
+        spec_indicators = [
+            'caratteristiche', 'dati tecnici', 'specifications',
+            'alimentazione', 'voltage', 'potenza', 'power',
+            'codice', 'modello', 'code',
+        ]
+
+        header_text = ' '.join(headers).lower()
+        return any(ind in header_text for ind in spec_indicators)
+
+    def _parse_spec_table(self, table: Dict) -> List[Dict]:
+        """Parse a specification table into structured data."""
+        specs = []
+        headers = [h.lower().strip() for h in table.get('headers', [])]
+
+        # Map headers to standardized names
+        column_mapping = {}
+        for i, header in enumerate(headers):
+            normalized = self._normalize_header(header)
+            if normalized:
+                column_mapping[i] = normalized
+
+        # Parse each row
+        for row in table.get('rows', []):
+            if not any(row):  # Skip empty rows
+                continue
+
+            spec = {}
+            for i, cell in enumerate(row):
+                if i in column_mapping:
+                    field_name = column_mapping[i]
+                    spec[field_name] = self._clean_value(cell)
+
+            # Try to extract SKU from first column if not mapped
+            if 'sku_code' not in spec and len(row) > 0:
+                sku = self._extract_sku(row[0])
+                if sku:
+                    spec['sku_code'] = sku
+
+            if spec:  # Only add if we extracted something
+                specs.append(spec)
+
+        return specs
+
+    def _normalize_header(self, header: str) -> Optional[str]:
+        """Normalize a header to standard field name."""
+        header_lower = header.lower().strip()
+
+        # Direct mapping
+        if header_lower in self.HEADER_MAPPINGS:
+            return self.HEADER_MAPPINGS[header_lower]
+
+        # Partial match
+        for key, value in self.HEADER_MAPPINGS.items():
+            if key in header_lower or header_lower in key:
+                return value
+
+        return None
+
+    def _clean_value(self, value: str) -> str:
+        """Clean and normalize a cell value."""
+        if not value:
+            return ""
+
+        # Remove extra whitespace
+        value = ' '.join(value.split())
+
+        # Apply common corrections
+        corrections = {
+            '50/60 H': '50/60 Hz',
+            'Scheda eletttronica': 'Scheda elettronica',
+            'Contentore': 'Contenitore',
+            'Interfaccia US': 'Interfaccia BUS',
+        }
+
+        for wrong, correct in corrections.items():
+            value = value.replace(wrong, correct)
+
+        return value
+
+    def _extract_sku(self, text: str) -> Optional[str]:
+        """Extract SKU code from text."""
+        # Pattern: 6-7 digits optionally followed by letters
+        match = re.search(r'\d{6,7}[A-Z]*', str(text))
+        return match.group() if match else None
+
+
+def extract_tables(tables: List[Dict], field_mappings: Dict = None) -> List[Dict]:
+    """Convenience function to extract specifications from tables."""
+    extractor = TableExtractor(field_mappings)
+    return extractor.extract_specs(tables)
