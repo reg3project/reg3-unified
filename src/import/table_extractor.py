@@ -17,13 +17,17 @@ class TableExtractor:
         # Voltage/Power
         'alimentazione': 'voltage',
         'tensione': 'voltage',
+        'tensione di alimentazione': 'voltage',
+        'tensione di alimentazione di rete': 'voltage',
         'supply voltage': 'voltage',
         'potenza max assorbita': 'power',
+        'potenza max': 'power',
         'potenza': 'power',
         'power': 'power',
 
         # Motor
         'tipo di motore': 'motor_type',
+        'motore elettrico': 'motor_type',
         'motore': 'motor_type',
         'motor type': 'motor_type',
 
@@ -31,6 +35,7 @@ class TableExtractor:
         'peso': 'weight',
         'weight': 'weight',
         'dimensioni': 'dimensions',
+        'dimensioni (lxpxh)': 'dimensions',
         'dimensions': 'dimensions',
         'ingombri': 'dimensions',
 
@@ -39,14 +44,25 @@ class TableExtractor:
         'coppia nominale': 'torque',
         'torque': 'torque',
         'velocità': 'speed',
+        'velocità max anta': 'speed',
+        'velocità max stelo': 'speed',
+        'velocità angolare max': 'speed',
         'speed': 'speed',
         'corsa max': 'max_stroke',
-        'larghezza max': 'max_stroke',
+        'corsa dello stelo': 'max_stroke',
+        'larghezza max': 'max_width',
+        'larghezza max anta': 'max_width',
+        'lunghezza max anta': 'max_length',
+        'lunghezza max asta': 'max_length',
         'max stroke': 'max_stroke',
+        'forza max di spinta': 'max_force',
+        'forza max': 'max_force',
+        'peso max anta': 'max_gate_weight',
 
         # Cycles
         'n° max cicli/ora': 'cycles_hour',
         'cicli/ora': 'cycles_hour',
+        'frequenza di utilizzo': 'cycles_hour',
         'cycles/hour': 'cycles_hour',
         'n° max cicli/giorno': 'cycles_day',
         'cicli/giorno': 'cycles_day',
@@ -57,13 +73,25 @@ class TableExtractor:
         'ip': 'ip_rating',
         'protection': 'ip_rating',
         'temperatura funzionamento': 'temperature',
+        'temperatura ambiente di esercizio': 'temperature',
         'temperatura': 'temperature',
         'operating temperature': 'temperature',
+        'termoprotezione': 'thermal_protection',
 
         # Electrical
         'condensatore marcia': 'capacitor_run',
         'condensatore': 'capacitor_run',
         'condensatore spunto': 'capacitor_start',
+        'condensatore di spunto': 'capacitor_start',
+        'corrente assorbita': 'current',
+
+        # Mechanical
+        'pignone': 'pinion',
+        'rapporto di riduzione': 'gear_ratio',
+        'angolo max apertura anta': 'max_angle',
+        'spazio di fermata': 'stopping_space',
+        'encoder': 'encoder',
+        'tipo di rallentamento': 'deceleration_type',
 
         # Control
         'finecorsa': 'limit_switch',
@@ -71,13 +99,24 @@ class TableExtractor:
         'limit switch': 'limit_switch',
         'sblocco': 'release',
         'sblocco manuale': 'release',
+        'dispositivo di sblocco': 'release',
         'manual release': 'release',
         'centrale': 'control_unit',
         'scheda elettronica': 'control_unit',
+        'apparecchiatura elettronica': 'control_unit',
         'control unit': 'control_unit',
+
+        # Materials
+        'tipo di materiale': 'material_type',
+        'tipo di trattamento': 'treatment_type',
+        'tipo di olio': 'oil_type',
+        'tipo di asta': 'arm_type',
+        'staffe di fissaggio': 'mounting_brackets',
+        'portata gruppo motore-pompa': 'pump_flow',
 
         # Identifiers
         'codice': 'sku_code',
+        'modello': 'model',
         'modello': 'model',
         'code': 'sku_code',
     }
@@ -179,13 +218,15 @@ class TableExtractor:
         # Remove extra whitespace
         value = ' '.join(value.split())
 
-        # Apply common corrections
+        # Apply common corrections (only if not already correct)
         corrections = {
-            '50/60 H': '50/60 Hz',
             'Scheda eletttronica': 'Scheda elettronica',
             'Contentore': 'Contenitore',
             'Interfaccia US': 'Interfaccia BUS',
         }
+
+        # Fix Hz typo only if it ends with "H" but not "Hz"
+        value = re.sub(r'(\d+/\d+)\s*H(?!z)', r'\1 Hz', value)
 
         for wrong, correct in corrections.items():
             value = value.replace(wrong, correct)

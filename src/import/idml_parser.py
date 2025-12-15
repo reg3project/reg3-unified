@@ -178,23 +178,114 @@ class IDMLParser:
         return ""
 
     def _extract_tables(self) -> List[Dict]:
-        """Extract all tables from spreads."""
+        """Extract all tables from spreads and stories."""
         tables = []
 
+        # Check for XML Table elements in spreads
         for spread in self.spreads:
             for table in spread.iter('Table'):
                 table_data = self._parse_table(table)
                 if table_data:
                     tables.append(table_data)
 
-        # Also check stories for tables
+        # Check for XML Table elements in stories
         for story in self.stories.values():
             for table in story.iter('Table'):
                 table_data = self._parse_table(table)
                 if table_data:
                     tables.append(table_data)
 
+        # Also extract spec-like content from Stories (vertical tables in text)
+        spec_table = self._extract_specs_from_stories()
+        if spec_table:
+            tables.append(spec_table)
+
         return tables
+
+    def _extract_specs_from_stories(self) -> Optional[Dict]:
+        """Extract technical specifications from story text content.
+
+        Many IDML files store specs as sequential text elements:
+        Header1, Value1, Header2, Value2, etc.
+        """
+        spec_keywords = [
+            'Tensione di alimentazione', 'Alimentazione', 'Potenza max',
+            'Motore elettrico', 'Peso', 'Grado di protezione', 'Temperatura',
+            'Frequenza di utilizzo', 'Dimensioni', 'Coppia max'
+        ]
+
+        for story in self.stories.values():
+            contents = [c.text.strip() for c in story.iter('Content')
+                       if c.text and c.text.strip()]
+
+            # Check if this story contains spec data
+            full_text = ' '.join(contents)
+            if not any(kw in full_text for kw in spec_keywords):
+                continue
+
+            # Parse header/value pairs
+            # Format: Modello, val1, val2, Header1, val1, val2, Header2, ...
+            headers = []
+            rows = []
+            models = []
+
+            i = 0
+            while i < len(contents):
+                text = contents[i]
+
+                # Check if this is a header (spec name)
+                if text == 'Modello':
+                    # Next items are model names
+                    i += 1
+                    while i < len(contents) and not self._is_spec_header(contents[i]):
+                        models.append(contents[i])
+                        i += 1
+                    continue
+
+                if self._is_spec_header(text):
+                    headers.append(text)
+                    # Collect values for this header
+                    values = []
+                    i += 1
+                    while i < len(contents) and not self._is_spec_header(contents[i]):
+                        values.append(contents[i])
+                        i += 1
+
+                    # Add to rows (pad if needed)
+                    while len(rows) < len(values):
+                        rows.append({})
+                    for j, val in enumerate(values):
+                        rows[j][headers[-1]] = val
+                else:
+                    i += 1
+
+            if headers and rows:
+                # Add model names to rows
+                for j, model in enumerate(models):
+                    if j < len(rows):
+                        rows[j]['Modello'] = model
+
+                return {
+                    'headers': ['Modello'] + headers if models else headers,
+                    'rows': [[r.get(h, '') for h in (['Modello'] + headers if models else headers)]
+                            for r in rows],
+                    'column_count': len(headers) + (1 if models else 0),
+                    'source': 'story_specs'
+                }
+
+        return None
+
+    def _is_spec_header(self, text: str) -> bool:
+        """Check if text looks like a specification header."""
+        spec_headers = [
+            'tensione', 'alimentazione', 'potenza', 'motore', 'peso',
+            'grado di protezione', 'temperatura', 'frequenza', 'dimensioni',
+            'coppia', 'forza', 'velocità', 'lunghezza', 'spazio', 'pignone',
+            'condensatore', 'termoprotezione', 'encoder', 'tipo', 'corsa',
+            'angolo', 'staffe', 'apparecchiatura', 'larghezza', 'portata'
+        ]
+        text_lower = text.lower()
+        return any(h in text_lower for h in spec_headers)
 
     def _parse_table(self, table_elem: etree._Element) -> Optional[Dict]:
         """Parse a single table element."""
